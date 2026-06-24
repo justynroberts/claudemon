@@ -1,0 +1,12 @@
+.pio/
+.vscode/
+.DS_Store
+*.swp
+build/
+
+# generated/scratch
+claude-ai-logo.png
+claude-ai-logo.svg
+__pycache__/
+*.pyc
+tailer-state.json
