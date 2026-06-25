@@ -14,6 +14,11 @@
 static uint32_t s_long_press_started = 0;
 static uint32_t s_last_press_ms      = 0;
 
+// Factory reset = sustained screen hold. Armed at 3 s (overlay countdown shows),
+// fires at 8 s. The countdown means an accidental poke can't silently wipe WiFi.
+static constexpr uint32_t RESET_ARM_MS  = 3000;
+static constexpr uint32_t RESET_HOLD_MS = 8000;
+
 void setup() {
     Serial.begin(115200);
     delay(150);
@@ -67,12 +72,21 @@ void loop() {
     bool held = pressed || (now - s_last_press_ms < 300);
 
     if (held && s_long_press_started == 0) s_long_press_started = now;
-    if (!held)                             s_long_press_started = 0;
-
-    if (s_long_press_started && now - s_long_press_started > 3000) {
+    if (!held) {
+        if (s_long_press_started) ui::reset_hint(-1);   // released — cancel
         s_long_press_started = 0;
-        s_last_press_ms = 0;
-        net::enter_config_mode();
+    }
+
+    if (s_long_press_started) {
+        uint32_t held_ms = now - s_long_press_started;
+        if (held_ms >= RESET_HOLD_MS) {
+            ui::reset_hint(-1);
+            s_long_press_started = 0;
+            s_last_press_ms = 0;
+            net::enter_config_mode();
+        } else if (held_ms > RESET_ARM_MS) {
+            ui::reset_hint((int)((RESET_HOLD_MS - held_ms + 999) / 1000));
+        }
     }
 
     if (pressed && !was_pressed && now - last_click_ms > 250) {

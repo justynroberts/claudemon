@@ -272,6 +272,46 @@ static void build_dashboard() {
     build_rows(s_dash);
 }
 
+// Reset-warning overlay (lives on the top layer, above whichever screen is up).
+static lv_obj_t* s_reset_overlay = nullptr;
+static lv_obj_t* s_reset_lbl     = nullptr;
+
+static void build_reset_overlay() {
+    s_reset_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(s_reset_overlay, 380, 110);
+    lv_obj_center(s_reset_overlay);
+    lv_obj_set_style_bg_color(s_reset_overlay, lv_color_hex(0x2A0F0A), 0);
+    lv_obj_set_style_bg_opa(s_reset_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(s_reset_overlay, theme::err(), 0);
+    lv_obj_set_style_border_width(s_reset_overlay, 2, 0);
+    lv_obj_set_style_radius(s_reset_overlay, 14, 0);
+    lv_obj_clear_flag(s_reset_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_reset_overlay, LV_OBJ_FLAG_HIDDEN);
+
+    s_reset_lbl = lv_label_create(s_reset_overlay);
+    lv_obj_set_style_text_font(s_reset_lbl, &hud_22, 0);
+    lv_obj_set_style_text_color(s_reset_lbl, theme::err(), 0);
+    lv_obj_set_style_text_align(s_reset_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(s_reset_lbl, "");
+    lv_obj_center(s_reset_lbl);
+}
+
+void reset_hint(int secs) {
+    static int last = -2;
+    if (secs == last || !s_reset_overlay) return;
+    last = secs;
+    if (secs < 0) {
+        lv_obj_add_flag(s_reset_overlay, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        char b[64];
+        snprintf(b, sizeof(b), ICON_BOLT "  WIPING WIFI IN %d\nrelease to cancel", secs);
+        lv_label_set_text(s_reset_lbl, b);
+        lv_obj_center(s_reset_lbl);
+        lv_obj_clear_flag(s_reset_overlay, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_refr_now(NULL);
+}
+
 // AP splash widgets
 static lv_obj_t* s_ap_ssid_lbl  = nullptr;
 static lv_obj_t* s_ap_pass_lbl  = nullptr;
@@ -324,6 +364,7 @@ static void build_ap_screen() {
 void begin() {
     build_ap_screen();
     build_dashboard();
+    build_reset_overlay();
     s_agg_bucket_start = millis();
     show_ap_splash();
 }

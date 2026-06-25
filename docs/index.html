@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flash claudemon</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#14110F; color:#F5F1EA; margin:0; padding:0;
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         display:flex; min-height:100vh; align-items:center; justify-content:center; }
+  .card { max-width:560px; margin:32px; background:#1F1B17; border:1px solid #2A2520;
+          border-radius:16px; padding:32px; }
+  h1 { margin:0 0 6px; font-size:28px; }
+  .sub { color:#8A857E; margin-bottom:24px; }
+  ol { line-height:1.7; color:#D6D1C8; padding-left:20px; }
+  code { background:#2A2520; color:#F5F1EA; padding:1px 6px; border-radius:5px; }
+  .accent { color:#CC785C; }
+  esp-web-install-button { display:block; margin:24px 0; }
+  .note { margin-top:20px; font-size:13px; color:#8A857E; line-height:1.6; }
+  a { color:#CC785C; }
+  button[slot=activate] { background:#CC785C; color:#14110F; border:0; border-radius:10px;
+          padding:14px 22px; font-size:16px; font-weight:600; cursor:pointer; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1><span class="accent">&#9632;</span> claudemon</h1>
+    <div class="sub">Wireless Claude Code token monitor &mdash; Sunton ESP32-4848S040C</div>
+
+    <ol>
+      <li>Plug the device into this computer with a USB-C cable.</li>
+      <li>Click <b>Install</b> below and pick the serial port (use Chrome or Edge).</li>
+      <li>After flashing, join WiFi <code>claudemon-XXXX</code> (password <code>claudemon</code>).</li>
+      <li>The setup page opens &mdash; choose your network and enter its password.</li>
+      <li>The device reboots and the dashboard appears at <code>http://claudemon.local</code>.</li>
+    </ol>
+
+    <esp-web-install-button manifest="./manifest.json">
+      <button slot="activate">Install claudemon</button>
+      <span slot="unsupported">Your browser can't flash over USB &mdash; use Chrome or Edge on desktop.</span>
+      <span slot="not-allowed">Serial access was blocked &mdash; reload and allow it.</span>
+    </esp-web-install-button>
+
+    <div class="note">
+      Then feed it your usage from your computer: see the
+      <a href="https://github.com/justynroberts/claudemon#desktop-tailer-feed-it-data">desktop tailer</a>.
+      Prefer the command line? Grab <code>claudemon-full.bin</code> from
+      <a href="https://github.com/justynroberts/claudemon/releases">Releases</a> and flash at <code>0x0</code> with esptool.
+    </div>
+  </div>
+</body>
+</html>

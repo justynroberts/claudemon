@@ -13,6 +13,22 @@ shows a live "Pulse" dashboard:
 - the **top projects** ranked, each with its own 60-minute sparkline
 - Outfit + FontAwesome icons, Claude wordmark header, coral-on-charcoal theme
 
+## Flash it (no toolchain)
+
+**Easiest — web installer.** Open **https://justynroberts.github.io/claudemon/**
+in Chrome or Edge, plug the device in over USB, and click *Install*. No tools to install.
+
+**Command line.** Download `claudemon-full.bin` from
+[Releases](https://github.com/justynroberts/claudemon/releases) and flash at `0x0`:
+
+```bash
+pip install esptool
+esptool.py --chip esp32s3 --port <PORT> --baud 460800 write_flash 0x0 claudemon-full.bin
+# or, from a clone:  ./scripts/flash.sh claudemon-full.bin
+```
+
+**From source** (developers) — see *Build from source* below.
+
 ## Layout
 
 ```
@@ -40,11 +56,12 @@ DEVICE_NOTES.md         hardware bring-up (panel, GT911, toolchain)
 CLAUDE.md               boot order + recurring gotchas
 ```
 
-## First flash
+## Build from source
 
 ```bash
 git submodule update --init      # pulls boards/
 pio run -t upload                # build + flash over USB
+./scripts/build-release.sh       # produce dist/claudemon-full.bin (single-file image)
 ```
 
 > The first boot right after a flash may fail the initial WiFi associate (cold
@@ -57,9 +74,24 @@ pio run -t upload                # build + flash over USB
 3. Copy the **shared secret** shown on the form — the tailer needs it.
 4. Device reboots into STA mode; the dashboard serves at `http://claudemon.local`.
 
-## Running the tailer
+## Desktop tailer (feed it data)
 
-See `host/README.md`. Short version (use Apple's python for LAN access on macOS 15+):
+The device shows nothing until something feeds it usage. A small tailer watches
+your Claude Code logs and pushes deltas to the device.
+
+**One-step install (macOS)** — sets up config, checks the device is reachable, and
+installs a `launchd` agent that auto-starts at login and restarts on crash:
+
+```bash
+./host/install.sh        # asks for device URL + the secret from the setup page
+./host/uninstall.sh      # remove it later
+```
+
+It deliberately runs under Apple's `/usr/bin/python3`, which has macOS 15 Local
+Network access (a Homebrew python gets `No route to host` to LAN devices even though
+`curl` works). The bundled config parser means no `pip install` is needed.
+
+**Manual / other platforms:**
 
 ```bash
 /usr/bin/python3 host/claudemon-tailer.py   # writes default config, exits

@@ -10,3 +10,4 @@ claude-ai-logo.svg
 __pycache__/
 *.pyc
 tailer-state.json
+dist/
