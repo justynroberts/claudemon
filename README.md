@@ -3,6 +3,8 @@
 Wireless token-usage monitor for Claude Code, running on the **Sunton
 ESP32-4848S040C** (480×480 capacitive CYD, ESP32-S3 N16R8).
 
+![claudemon dashboard](docs/dashboard.png)
+
 A host-side tailer watches `~/.claude/projects/*/*.jsonl`, aggregates token
 usage per project, and POSTs deltas to the device over the LAN. The device
 shows a live "Pulse" dashboard:
