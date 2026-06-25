@@ -96,6 +96,26 @@ Regen steps in `src/fonts/README.md`. Key points:
   `scan({}, groups)` with empty state once and push. Device store is RAM-only — a reboot clears it.
 - Device secret is shown on the setup portal; it lives in NVS, not exposed over `/status`.
 
+## Releasing / distribution
+
+```bash
+./scripts/build-release.sh          # builds + merges -> dist/claudemon-full.bin
+                                    #   and updates docs/firmware/claudemon-full.bin
+gh release create vX.Y.Z dist/claudemon-full.bin --title ... --notes ...
+git add docs/firmware && git commit -m "release vX.Y.Z" && git push
+```
+
+- **Single binary**: `claudemon-full.bin` is bootloader+partitions+app merged at
+  offset `0x0` (ESP32-S3). Flash with `esptool.py write_flash 0x0 ...` or `scripts/flash.sh`.
+- **Web installer**: `docs/` is an [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
+  page served via GitHub Pages (`https://justynroberts.github.io/claudemon/`). The
+  `docs/firmware/claudemon-full.bin` copy is what the browser flashes, so re-run
+  `build-release.sh` and commit `docs/firmware/` on every release. Pages is set to
+  serve from `main` `/docs`.
+- **Desktop**: `host/install.sh` installs a `launchd` agent under `/usr/bin/python3`.
+  Reliability hinges on that interpreter (macOS 15 Local Network access) — see the
+  Host tailer section.
+
 ## Adding a new feature — checklist
 
 1. New persisted setting → add to `config::Settings` + load/save.
