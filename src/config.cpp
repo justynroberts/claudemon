@@ -30,10 +30,17 @@ void save() {
 bool is_configured() { return s_settings.wifi_ssid.length() > 0; }
 
 void clear() {
+    // Factory-reset WiFi only. The shared secret is deliberately preserved so a
+    // re-provision doesn't invalidate every host tailer's config — you copy the
+    // secret once and it survives resets.
     s_prefs.begin(NS, false);
-    s_prefs.clear();
+    s_prefs.remove("ssid");
+    s_prefs.remove("pass");
+    s_prefs.remove("name");
     s_prefs.end();
+    String keep_secret = s_settings.shared_secret;
     s_settings = {};
+    s_settings.shared_secret = keep_secret;
 }
 
 const Settings& current() { return s_settings; }
