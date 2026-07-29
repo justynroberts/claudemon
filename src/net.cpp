@@ -104,38 +104,19 @@ static void handle_status_local() {
 // Bring up AP + captive portal and pump DNS/HTTP until WiFi creds arrive
 // (or a reboot fires from the form handler).
 static void run_ap_portal() {
-    // Scan while still in STA mode — AP is not up yet. Use async scan so the
-    // task yields every 100 ms and doesn't trigger the RTC WDT.
+    // Bring the AP up FIRST so it broadcasts immediately and reliably, then scan
+    // for the network dropdown in the background (AP_STA keeps the AP up during
+    // the scan). This matches the proven cyd-rundeck-s3-clean sequence. The old
+    // code scanned in STA and only THEN switched to AP-only, which left ~7 s with
+    // no AP and sometimes a radio state where the AP never actually broadcast.
     s_scan_html = "";
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect(false, false);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    // async, no hidden, active, 300 ms/chan — matches the proven reference.
-    WiFi.scanNetworks(/*async=*/true, /*hidden=*/false, /*passive=*/false, 300);
-    uint32_t scan_start = millis();
-    while (WiFi.scanComplete() == WIFI_SCAN_RUNNING &&
-           millis() - scan_start < 6000) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-    int n = WiFi.scanComplete();
-    if (n > 0) {
-        for (int i = 0; i < n && i < 24; i++) {
-            s_scan_html += "<option value=\"";
-            s_scan_html += WiFi.SSID(i);
-            s_scan_html += "\">";
-            s_scan_html += WiFi.SSID(i);
-            s_scan_html += "</option>";
-        }
-    }
-    WiFi.scanDelete();
-
     s_state = State::AP;
-    WiFi.mode(WIFI_AP);
+    WiFi.mode(WIFI_AP_STA);
     // Explicit channel 1; empty password -> open network (nullptr, not "").
     bool ap_ok = WiFi.softAP(s_ap_ssid.c_str(),
                              s_ap_pass.length() ? s_ap_pass.c_str() : nullptr,
                              /*channel=*/1);
-    vTaskDelay(pdMS_TO_TICKS(150));
+    vTaskDelay(pdMS_TO_TICKS(200));
     IPAddress ap_ip = WiFi.softAPIP();
     log_i("softAP('%s' pw='%s' ch=1) -> %s, ip=%s",
           s_ap_ssid.c_str(), s_ap_pass.c_str(),
@@ -153,6 +134,13 @@ static void run_ap_portal() {
     http.collectHeaders(required, 1);
     http.begin();
 
+    // Kick one background scan for the dropdown; harvested in the loop below.
+    // We stop scanning once we have results so the AP stops channel-hopping and
+    // stays rock-solid on ch1 for phones to join.
+    bool     have_scan = false;
+    uint32_t next_scan = millis();   // due now
+    WiFi.scanNetworks(/*async=*/true, false, false, 300);
+
     for (;;) {
         if (s_restart_pending) {
             vTaskDelay(pdMS_TO_TICKS(1200));
@@ -160,6 +148,28 @@ static void run_ap_portal() {
         }
         s_dns.processNextRequest();
         http.handleClient();
+
+        if (!have_scan) {
+            int n = WiFi.scanComplete();
+            if (n >= 0) {                       // a scan finished
+                if (n > 0) {
+                    s_scan_html = "";
+                    for (int i = 0; i < n && i < 24; i++) {
+                        s_scan_html += "<option value=\"";
+                        s_scan_html += WiFi.SSID(i);
+                        s_scan_html += "\">";
+                        s_scan_html += WiFi.SSID(i);
+                        s_scan_html += "</option>";
+                    }
+                    have_scan = true;           // done — stop hopping channels
+                }
+                WiFi.scanDelete();
+                next_scan = millis() + 8000;    // retry later if we got nothing
+            } else if (n == WIFI_SCAN_FAILED && millis() >= next_scan) {
+                WiFi.scanNetworks(/*async=*/true, false, false, 300);
+                next_scan = millis() + 8000;
+            }
+        }
         vTaskDelay(pdMS_TO_TICKS(2));
     }
 }
