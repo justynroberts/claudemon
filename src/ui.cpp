@@ -80,8 +80,8 @@ static uint32_t  s_agg_hist[GRAPH_BARS];
 static int       s_agg_head         = GRAPH_BARS - 1;
 static uint32_t  s_agg_bucket_start = 0;
 static uint64_t  s_last_grand       = 0;
-static constexpr int GRAPH_BASE_Y = 88;    // baseline within graph card
-static constexpr int GRAPH_MAX_H  = 52;
+static constexpr int GRAPH_BASE_Y = 82;    // baseline within graph card
+static constexpr int GRAPH_MAX_H  = 46;
 static constexpr int GRAPH_CARD_W = 456;
 static constexpr int GRAPH_MARGIN = 14;    // inset so bars clear the rounded corners
 static constexpr int GRAPH_BAR_W  = 6;
@@ -90,13 +90,16 @@ static inline int graph_bar_x(int i) {
     return GRAPH_MARGIN + i * (GRAPH_CARD_W - 2 * GRAPH_MARGIN - GRAPH_BAR_W) / (GRAPH_BARS - 1);
 }
 
-// session / week usage gauges ----------------------------------------------
+// session / week / month usage gauges --------------------------------------
 static lv_obj_t* s_gauge_s_fill = nullptr;   // session fill bar
 static lv_obj_t* s_gauge_w_fill = nullptr;   // week fill bar
+static lv_obj_t* s_gauge_m_fill = nullptr;   // month fill bar
 static lv_obj_t* s_gauge_s_val  = nullptr;   // "63% · 27.8M"
 static lv_obj_t* s_gauge_w_val  = nullptr;
+static lv_obj_t* s_gauge_m_val  = nullptr;
 static constexpr int GAUGE_TRACK_X = 12;
 static constexpr int GAUGE_TRACK_W = 432;    // full inner width of the limits card
+static constexpr int GAUGE_Y_S = 3, GAUGE_Y_W = 24, GAUGE_Y_M = 45;  // gauge tops
 
 // ranked rows with per-env sparklines --------------------------------------
 static constexpr int N_ROWS    = 3;
@@ -111,7 +114,7 @@ struct Row {
     char      last_tok[24];
 };
 static Row s_rows[N_ROWS];
-static constexpr int ROW_Y0 = 304, ROW_H = 52;
+static constexpr int ROW_Y0 = 306, ROW_H = 52;
 static constexpr int SPARK_X0 = 40, SPARK_PITCH = 18, SPARK_W = 13;
 static constexpr int SPARK_MAX_H = 14;
 static constexpr int SPARK_TOP   = 28;   // sparkline offset within a row (leaves space below)
@@ -220,7 +223,7 @@ static void build_hero(lv_obj_t* parent) {
 // Two slim gauges: SESSION (5h) and WEEK (7d), each a dim track + a coral/amber/
 // red fill sized to the percentage the host reports. A local proxy for /usage.
 static void build_limits(lv_obj_t* parent) {
-    lv_obj_t* card = mk_card(parent, 12, 142, 456, 54);
+    lv_obj_t* card = mk_card(parent, 12, 140, 456, 68);
 
     auto gauge = [&](int y, const char* name,
                      lv_obj_t** fill_out, lv_obj_t** val_out) {
@@ -229,20 +232,21 @@ static void build_limits(lv_obj_t* parent) {
         lv_obj_align(v, LV_ALIGN_TOP_RIGHT, -12, y);
         *val_out = v;
         // track
-        mk_bar(card, GAUGE_TRACK_X, y + 15, GAUGE_TRACK_W, 5, theme::bg());
+        mk_bar(card, GAUGE_TRACK_X, y + 14, GAUGE_TRACK_W, 4, theme::bg());
         // fill (starts at 1px; refresh_usage sizes + colors it)
-        *fill_out = mk_bar(card, GAUGE_TRACK_X, y + 15, 1, 5, theme::accent());
+        *fill_out = mk_bar(card, GAUGE_TRACK_X, y + 14, 1, 4, theme::accent());
     };
-    gauge(6,  "SESSION  5h", &s_gauge_s_fill, &s_gauge_s_val);
-    gauge(29, "WEEK  7d",    &s_gauge_w_fill, &s_gauge_w_val);
+    gauge(GAUGE_Y_S, "SESSION  5h", &s_gauge_s_fill, &s_gauge_s_val);
+    gauge(GAUGE_Y_W, "WEEK  7d",    &s_gauge_w_fill, &s_gauge_w_val);
+    gauge(GAUGE_Y_M, "MONTH  30d",  &s_gauge_m_fill, &s_gauge_m_val);
 }
 
 static void build_graph(lv_obj_t* parent) {
-    lv_obj_t* card = mk_card(parent, 12, 200, GRAPH_CARD_W, 98);
+    lv_obj_t* card = mk_card(parent, 12, 212, GRAPH_CARD_W, 90);
     // Icon in its own larger label so the glyph isn't clipped by the small text line.
-    mk_label(card, ICON_CHART, &hud_18, theme::text_mute(), 14, 11);
-    mk_label(card, "ACTIVITY", &hud_12, theme::text_mute(), 44, 17);
-    mk_label(card, "live - tokens / 3s", &hud_12, theme::accent_dim(), 326, 17);
+    mk_label(card, ICON_CHART, &hud_18, theme::text_mute(), 14, 10);
+    mk_label(card, "ACTIVITY", &hud_12, theme::text_mute(), 44, 16);
+    mk_label(card, "live - tokens / 3s", &hud_12, theme::accent_dim(), 326, 16);
     for (int i = 0; i < GRAPH_BARS; i++) {
         s_bars[i] = mk_bar(card, graph_bar_x(i), GRAPH_BASE_Y - 2, GRAPH_BAR_W, 2, theme::accent_dim());
         s_bar_last_h[i] = 2;
@@ -689,28 +693,29 @@ static lv_color_t usage_color(uint32_t pct) {
 }
 
 static bool refresh_usage() {
-    static char    last_s[24] = "", last_w[24] = "";
-    static int32_t last_spct = -1, last_wpct = -1;
+    static char    last_s[24] = "", last_w[24] = "", last_m[24] = "";
+    static int32_t last_spct = -1, last_wpct = -1, last_mpct = -1;
     store::Usage u = store::get_usage();
     bool changed = false;
 
     if (!u.valid) {
         changed |= set_text_if_diff(s_gauge_s_val, "no data yet", last_s, sizeof(last_s));
-        if (changed) lv_obj_align(s_gauge_s_val, LV_ALIGN_TOP_RIGHT, -12, 6);
+        if (changed) lv_obj_align(s_gauge_s_val, LV_ALIGN_TOP_RIGHT, -12, GAUGE_Y_S);
         return changed;
     }
 
-    char stk[16], wtk[16], sb[24], wb[24];
-    fmt_tokens(u.session_tokens, stk, sizeof(stk));
-    fmt_tokens(u.week_tokens, wtk, sizeof(wtk));
-    snprintf(sb, sizeof(sb), "%u%%  %s", (unsigned)u.session_pct, stk);
-    snprintf(wb, sizeof(wb), "%u%%  %s", (unsigned)u.week_pct, wtk);
-    if (set_text_if_diff(s_gauge_s_val, sb, last_s, sizeof(last_s))) {
-        lv_obj_align(s_gauge_s_val, LV_ALIGN_TOP_RIGHT, -12, 6); changed = true;
-    }
-    if (set_text_if_diff(s_gauge_w_val, wb, last_w, sizeof(last_w))) {
-        lv_obj_align(s_gauge_w_val, LV_ALIGN_TOP_RIGHT, -12, 29); changed = true;
-    }
+    auto set_val = [&](lv_obj_t* lbl, uint32_t pct, uint64_t tok, char* cache, int y) {
+        char tk[16], buf[24];
+        fmt_tokens(tok, tk, sizeof(tk));
+        snprintf(buf, sizeof(buf), "%u%%  %s", (unsigned)pct, tk);
+        if (set_text_if_diff(lbl, buf, cache, 24)) {
+            lv_obj_align(lbl, LV_ALIGN_TOP_RIGHT, -12, y);
+            changed = true;
+        }
+    };
+    set_val(s_gauge_s_val, u.session_pct, u.session_tokens, last_s, GAUGE_Y_S);
+    set_val(s_gauge_w_val, u.week_pct,    u.week_tokens,    last_w, GAUGE_Y_W);
+    set_val(s_gauge_m_val, u.month_pct,   u.month_tokens,   last_m, GAUGE_Y_M);
 
     auto set_fill = [](lv_obj_t* fill, uint32_t pct, int32_t& last) {
         if ((int32_t)pct == last) return false;
@@ -723,7 +728,8 @@ static bool refresh_usage() {
         return true;
     };
     if (set_fill(s_gauge_s_fill, u.session_pct, last_spct)) changed = true;
-    if (set_fill(s_gauge_w_fill, u.week_pct,   last_wpct)) changed = true;
+    if (set_fill(s_gauge_w_fill, u.week_pct,    last_wpct)) changed = true;
+    if (set_fill(s_gauge_m_fill, u.month_pct,   last_mpct)) changed = true;
     return changed;
 }
 

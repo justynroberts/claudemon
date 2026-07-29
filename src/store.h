@@ -40,10 +40,13 @@ struct Usage {
     bool     valid;
     uint32_t session_pct;      // 0..100+ (can exceed if over budget)
     uint32_t week_pct;
+    uint32_t month_pct;
     uint64_t session_tokens;
     uint64_t week_tokens;
+    uint64_t month_tokens;
     uint64_t session_budget;
     uint64_t week_budget;
+    uint64_t month_budget;
     uint32_t updated_ms;       // millis() when last set; 0 = never
 };
 

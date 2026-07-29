@@ -36,8 +36,10 @@ from pathlib import Path
 # set in tailer.toml. Tune session_budget / week_budget to match your plan.
 SESSION_SECS = 5 * 3600
 WEEK_SECS    = 7 * 86400
+MONTH_SECS   = 30 * 86400
 DEFAULT_SESSION_BUDGET = 200_000_000
 DEFAULT_WEEK_BUDGET    = 2_000_000_000
+DEFAULT_MONTH_BUDGET   = 6_000_000_000
 
 try:
     import tomllib   # Python 3.11+
@@ -97,10 +99,11 @@ def load_cfg() -> dict:
             'shared_secret = "REPLACE-WITH-VALUE-FROM-DEVICE-PORTAL"\n'
             'interval      = 10\n'
             '\n'
-            '# Session (5h) / week (7d) gauges are a local proxy for /usage.\n'
-            '# Tune these token budgets so the percentages match your plan limits.\n'
+            '# Session (5h) / week (7d) / month (30d) gauges are a local proxy for\n'
+            '# /usage. Tune these token budgets so the percentages match your plan.\n'
             'session_budget = 200000000\n'
             'week_budget    = 2000000000\n'
+            'month_budget   = 6000000000\n'
             '\n'
             '# [groups]\n'
             '# work = ["/Users/me/work/proj-a"]\n'
@@ -249,7 +252,7 @@ class UsageWindow:
     def refresh(self) -> None:
         if not LOG_ROOT.exists():
             return
-        cutoff = time.time() - WEEK_SECS
+        cutoff = time.time() - MONTH_SECS
         for jsonl in LOG_ROOT.rglob("*.jsonl"):
             key = str(jsonl)
             try:
@@ -295,25 +298,28 @@ class UsageWindow:
                 self.events.append((ep, tok))
             self.offsets[key] = off + consumed
 
-    def sums(self) -> tuple[int, int]:
+    def sums(self) -> tuple[int, int, int]:
         now = time.time()
-        wk_cut, se_cut = now - WEEK_SECS, now - SESSION_SECS
-        self.events = [e for e in self.events if e[0] >= wk_cut]
+        mo_cut, wk_cut, se_cut = now - MONTH_SECS, now - WEEK_SECS, now - SESSION_SECS
+        self.events = [e for e in self.events if e[0] >= mo_cut]
         session = sum(k for t, k in self.events if t >= se_cut)
-        week = sum(k for t, k in self.events)
-        return session, week
+        week = sum(k for t, k in self.events if t >= wk_cut)
+        month = sum(k for t, k in self.events)
+        return session, week, month
 
 
 def push_usage(cfg: dict, uw: UsageWindow) -> bool:
     uw.refresh()
-    session, week = uw.sums()
+    session, week, month = uw.sums()
     sb = int(cfg.get("session_budget", DEFAULT_SESSION_BUDGET) or 0)
     wb = int(cfg.get("week_budget", DEFAULT_WEEK_BUDGET) or 0)
+    mb = int(cfg.get("month_budget", DEFAULT_MONTH_BUDGET) or 0)
     payload = {
-        "session_tokens": session, "week_tokens": week,
-        "session_budget": sb, "week_budget": wb,
+        "session_tokens": session, "week_tokens": week, "month_tokens": month,
+        "session_budget": sb, "week_budget": wb, "month_budget": mb,
         "session_pct": int(session * 100 / sb) if sb > 0 else 0,
         "week_pct": int(week * 100 / wb) if wb > 0 else 0,
+        "month_pct": int(month * 100 / mb) if mb > 0 else 0,
     }
     body = json.dumps(payload).encode()
     url = cfg["device_url"].rstrip("/") + "/usage"

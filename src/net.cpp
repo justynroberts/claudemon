@@ -80,10 +80,13 @@ static void handle_usage_local() {
     store::Usage u = {};
     u.session_pct    = doc["session_pct"]    | 0;
     u.week_pct       = doc["week_pct"]       | 0;
+    u.month_pct      = doc["month_pct"]      | 0;
     u.session_tokens = doc["session_tokens"] | (uint64_t)0;
     u.week_tokens    = doc["week_tokens"]    | (uint64_t)0;
+    u.month_tokens   = doc["month_tokens"]   | (uint64_t)0;
     u.session_budget = doc["session_budget"] | (uint64_t)0;
     u.week_budget    = doc["week_budget"]    | (uint64_t)0;
+    u.month_budget   = doc["month_budget"]   | (uint64_t)0;
     store::set_usage(u);
     w.send(200, "application/json", "{\"ok\":true}");
 }
