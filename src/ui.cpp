@@ -477,49 +477,57 @@ static bool refresh_status_bar() {
     return changed;
 }
 
-static void refresh_ap_screen() {
-    if (!s_ap_ssid_lbl || !s_ap_pass_lbl) return;
+// Returns true if any label text changed (caller forces a repaint — the RGB
+// panel doesn't auto-flush label updates).
+static bool refresh_ap_screen() {
+    if (!s_ap_ssid_lbl || !s_ap_pass_lbl) return false;
+    static char c_ssid[48] = "", c_pass[80] = "", c_err[96] = "";
+    char ssid_buf[48] = "", pass_buf[80] = "", err_buf[96] = "";
     auto st = net::state();
+
     if (st == net::State::Connecting) {
-        lv_label_set_text(s_ap_ssid_lbl, "connecting to:");
-        lv_label_set_text(s_ap_pass_lbl, config::current().wifi_ssid.c_str());
-        if (s_ap_error_lbl) {
-            uint8_t wl = net::sta_wl_status();
-            const char* wl_str =
-                wl == 255 ? "starting..." :
-                wl == 0   ? "idle" :
-                wl == 1   ? "SSID not found" :
-                wl == 3   ? "connected! waiting for IP..." :
-                wl == 4   ? "WRONG PASSWORD (auth rejected)" :
-                wl == 6   ? "disconnected" : "...";
-            lv_label_set_text(s_ap_error_lbl, wl_str);
-        }
-    } else if (st == net::State::AP) {
-        String ssid = net::ap_ssid();
-        lv_label_set_text(s_ap_ssid_lbl, ssid.length() ? ssid.c_str() : "claudemon");
-        String pw = net::ap_password();
-        lv_label_set_text(s_ap_pass_lbl, pw.length()
-            ? (String("password: ") + pw).c_str()
-            : "open network - no password");
-        if (s_ap_error_lbl) {
-            String err   = net::sta_fail_reason();
-            String tried = config::current().wifi_ssid;
-            String msg;
-            if (tried.length() == 0)    msg = "no saved network";
-            else if (net::was_online()) { msg = tried + ": connected then dropped";
-                                          if (err.length()) msg += " (" + err + ")"; }
-            else if (err.length())      msg = tried + ": " + err;
-            lv_label_set_text(s_ap_error_lbl, msg.c_str());
-        }
+        strncpy(ssid_buf, "connecting to:", sizeof(ssid_buf) - 1);
+        strncpy(pass_buf, config::current().wifi_ssid.c_str(), sizeof(pass_buf) - 1);
+        uint8_t wl = net::sta_wl_status();
+        const char* wl_str =
+            wl == 255 ? "starting..." :
+            wl == 0   ? "idle" :
+            wl == 1   ? "SSID not found" :
+            wl == 3   ? "connected! waiting for IP..." :
+            wl == 4   ? "WRONG PASSWORD (auth rejected)" :
+            wl == 6   ? "disconnected" : "...";
+        strncpy(err_buf, wl_str, sizeof(err_buf) - 1);
     } else {
+        // AP and Booting both know the AP creds — always show name + password so
+        // it's readable from the moment the splash appears.
         String ssid = net::ap_ssid();
-        lv_label_set_text(s_ap_ssid_lbl, ssid.length() ? ssid.c_str() : "claudemon");
-        lv_label_set_text(s_ap_pass_lbl, "");
-        if (s_ap_error_lbl) {
-            String rst = "boot: " + net::last_reset_reason();
-            lv_label_set_text(s_ap_error_lbl, rst.c_str());
+        strncpy(ssid_buf, ssid.length() ? ssid.c_str() : "claudemon", sizeof(ssid_buf) - 1);
+        String pw = net::ap_password();
+        if (pw.length()) snprintf(pass_buf, sizeof(pass_buf), "password: %s", pw.c_str());
+        else             strncpy(pass_buf, "open - no password", sizeof(pass_buf) - 1);
+
+        if (st == net::State::AP) {
+            String err = net::sta_fail_reason();
+            String tried = config::current().wifi_ssid;
+            if (tried.length() && net::was_online()) {
+                String m = tried + ": dropped";
+                if (err.length()) m += " (" + err + ")";
+                strncpy(err_buf, m.c_str(), sizeof(err_buf) - 1);
+            } else if (tried.length() && err.length()) {
+                String m = tried + ": " + err;
+                strncpy(err_buf, m.c_str(), sizeof(err_buf) - 1);
+            }
+        } else {
+            strncpy(err_buf, "starting...", sizeof(err_buf) - 1);
         }
     }
+    ssid_buf[sizeof(ssid_buf) - 1] = pass_buf[sizeof(pass_buf) - 1] = err_buf[sizeof(err_buf) - 1] = 0;
+
+    bool changed = false;
+    changed |= set_text_if_diff(s_ap_ssid_lbl, ssid_buf, c_ssid, sizeof(c_ssid));
+    changed |= set_text_if_diff(s_ap_pass_lbl, pass_buf, c_pass, sizeof(c_pass));
+    if (s_ap_error_lbl) changed |= set_text_if_diff(s_ap_error_lbl, err_buf, c_err, sizeof(c_err));
+    return changed;
 }
 
 void refresh_ap_labels() { refresh_ap_screen(); }
@@ -725,8 +733,8 @@ void tick() {
     last = millis();
 
     if (net::state() != net::State::Online) {
-        refresh_ap_screen();
         if (!s_showing_ap) show_ap_splash();
+        if (refresh_ap_screen()) lv_refr_now(NULL);   // panel won't auto-flush
         return;
     }
     if (s_showing_ap) show_dashboard();
