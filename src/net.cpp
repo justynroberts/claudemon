@@ -131,11 +131,15 @@ static void run_ap_portal() {
 
     s_state = State::AP;
     WiFi.mode(WIFI_AP);
-    // Empty password -> open network (nullptr, not "").
-    WiFi.softAP(s_ap_ssid.c_str(), s_ap_pass.length() ? s_ap_pass.c_str() : nullptr);
+    // Explicit channel 1; empty password -> open network (nullptr, not "").
+    bool ap_ok = WiFi.softAP(s_ap_ssid.c_str(),
+                             s_ap_pass.length() ? s_ap_pass.c_str() : nullptr,
+                             /*channel=*/1);
     vTaskDelay(pdMS_TO_TICKS(150));
     IPAddress ap_ip = WiFi.softAPIP();
-    log_i("AP up: %s @ %s", s_ap_ssid.c_str(), ap_ip.toString().c_str());
+    log_i("softAP('%s' pw='%s' ch=1) -> %s, ip=%s",
+          s_ap_ssid.c_str(), s_ap_pass.c_str(),
+          ap_ok ? "OK" : "FAILED", ap_ip.toString().c_str());
 
     s_dns.setErrorReplyCode(DNSReplyCode::NoError);
     s_dns.start(53, "*", ap_ip);
