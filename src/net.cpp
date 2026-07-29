@@ -31,9 +31,10 @@ static volatile uint8_t s_sta_wl_status   = 255;  // live wl_status_t during STA
 static volatile bool    s_restart_pending = false;
 
 static void make_ap_creds() {
-    // Simple open AP: just "claudemon", no password.
+    // WPA2 AP so phones reliably pop the captive-portal setup page. Simple,
+    // memorable name + password.
     s_ap_ssid = "claudemon";
-    s_ap_pass = "";
+    s_ap_pass = "claudemon";
 }
 
 static bool auth_ok_local(WebServer& w) {

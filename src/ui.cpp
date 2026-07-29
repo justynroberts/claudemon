@@ -402,11 +402,11 @@ static void build_ap_screen() {
 
     s_ap_pass_lbl = lv_label_create(s_ap_screen);
     lv_label_set_text(s_ap_pass_lbl, "");
-    lv_obj_set_style_text_color(s_ap_pass_lbl, theme::text_mute(), 0);
-    lv_obj_set_style_text_font(s_ap_pass_lbl, &hud_14, 0);
+    lv_obj_set_style_text_color(s_ap_pass_lbl, theme::text(), 0);  // bright, not muted
+    lv_obj_set_style_text_font(s_ap_pass_lbl, &hud_18, 0);
     lv_obj_set_width(s_ap_pass_lbl, 480);
     lv_obj_set_style_text_align(s_ap_pass_lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(s_ap_pass_lbl, 0, 270);
+    lv_obj_set_pos(s_ap_pass_lbl, 0, 272);
 
     s_ap_error_lbl = lv_label_create(s_ap_screen);
     lv_label_set_text(s_ap_error_lbl, "");

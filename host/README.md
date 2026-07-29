@@ -6,7 +6,7 @@ claudemon device on the LAN. Per-project session logs are parsed for
 
 ## Setup
 
-1. Join the device's open WiFi network `claudemon` (no password); the captive
+1. Join the device's WiFi network `claudemon` (password `claudemon`); the captive
    portal opens. Copy the shared secret shown on the form.
 2. Run the tailer once to drop a default config:
    ```bash
