@@ -71,7 +71,7 @@ pio run -t upload                # build + flash over USB
 
 ## First boot
 
-1. Device comes up in AP mode: SSID `claudemon-XXXX`, password `claudemon`.
+1. Device comes up in AP mode: join the open WiFi network `claudemon` (no password).
 2. Join it; a captive-portal page appears. Pick your network and enter the password.
 3. Copy the **shared secret** shown on the form — the tailer needs it.
 4. Device reboots into STA mode; the dashboard serves at `http://claudemon.local`.

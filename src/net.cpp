@@ -31,10 +31,9 @@ static volatile uint8_t s_sta_wl_status   = 255;  // live wl_status_t during STA
 static volatile bool    s_restart_pending = false;
 
 static void make_ap_creds() {
-    String mac = WiFi.macAddress();
-    mac.replace(":", "");
-    s_ap_ssid = "claudemon-" + mac.substring(mac.length() - 4);
-    s_ap_pass = "claudemon";
+    // Simple open AP: just "claudemon", no password.
+    s_ap_ssid = "claudemon";
+    s_ap_pass = "";
 }
 
 static bool auth_ok_local(WebServer& w) {
@@ -131,7 +130,8 @@ static void run_ap_portal() {
 
     s_state = State::AP;
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(s_ap_ssid.c_str(), s_ap_pass.c_str());
+    // Empty password -> open network (nullptr, not "").
+    WiFi.softAP(s_ap_ssid.c_str(), s_ap_pass.length() ? s_ap_pass.c_str() : nullptr);
     vTaskDelay(pdMS_TO_TICKS(150));
     IPAddress ap_ip = WiFi.softAPIP();
     log_i("AP up: %s @ %s", s_ap_ssid.c_str(), ap_ip.toString().c_str());

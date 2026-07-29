@@ -497,9 +497,10 @@ static void refresh_ap_screen() {
     } else if (st == net::State::AP) {
         String ssid = net::ap_ssid();
         lv_label_set_text(s_ap_ssid_lbl, ssid.length() ? ssid.c_str() : "claudemon");
-        char pw[64];
-        snprintf(pw, sizeof(pw), "password: %s", net::ap_password().c_str());
-        lv_label_set_text(s_ap_pass_lbl, pw);
+        String pw = net::ap_password();
+        lv_label_set_text(s_ap_pass_lbl, pw.length()
+            ? (String("password: ") + pw).c_str()
+            : "open network - no password");
         if (s_ap_error_lbl) {
             String err   = net::sta_fail_reason();
             String tried = config::current().wifi_ssid;

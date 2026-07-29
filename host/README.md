@@ -6,8 +6,8 @@ claudemon device on the LAN. Per-project session logs are parsed for
 
 ## Setup
 
-1. On the device, hit the captive portal (`claudemon-xxxx` SSID, password
-   `claudemon`) and copy the shared secret shown on the form.
+1. Join the device's open WiFi network `claudemon` (no password); the captive
+   portal opens. Copy the shared secret shown on the form.
 2. Run the tailer once to drop a default config:
    ```bash
    /usr/bin/python3 claudemon-tailer.py
