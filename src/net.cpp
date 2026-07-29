@@ -68,6 +68,26 @@ static void handle_ingest_local() {
     w.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handle_usage_local() {
+    auto& w = server::http();
+    if (!auth_ok_local(w)) { w.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
+    if (!w.hasArg("plain")) { w.send(400, "application/json", "{\"error\":\"empty body\"}"); return; }
+    JsonDocument doc;
+    if (deserializeJson(doc, w.arg("plain"))) {
+        w.send(400, "application/json", "{\"error\":\"bad json\"}");
+        return;
+    }
+    store::Usage u = {};
+    u.session_pct    = doc["session_pct"]    | 0;
+    u.week_pct       = doc["week_pct"]       | 0;
+    u.session_tokens = doc["session_tokens"] | (uint64_t)0;
+    u.week_tokens    = doc["week_tokens"]    | (uint64_t)0;
+    u.session_budget = doc["session_budget"] | (uint64_t)0;
+    u.week_budget    = doc["week_budget"]    | (uint64_t)0;
+    store::set_usage(u);
+    w.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handle_status_local() {
     auto& w = server::http();
     JsonDocument doc;
@@ -122,6 +142,7 @@ static void run_ap_portal() {
     portal::mount();
     auto& http = server::http();
     http.on("/ingest", HTTP_POST, handle_ingest_local);
+    http.on("/usage",  HTTP_POST, handle_usage_local);
     http.on("/status", HTTP_GET,  handle_status_local);
     const char* required[] = { "Authorization" };
     http.collectHeaders(required, 1);
@@ -192,6 +213,7 @@ static void run_sta_server() {
 
     auto& http = server::http();
     http.on("/ingest", HTTP_POST, handle_ingest_local);
+    http.on("/usage",  HTTP_POST, handle_usage_local);
     http.on("/status", HTTP_GET,  handle_status_local);
     const char* required[] = { "Authorization" };
     http.collectHeaders(required, 1);

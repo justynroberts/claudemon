@@ -27,7 +27,17 @@ import time
 import urllib.request
 import urllib.error
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+
+# Usage-window sizes and default budgets (tokens) for the session/week gauges.
+# These are a LOCAL PROXY for Claude Code's /usage meter — the real per-plan
+# limit isn't stored on disk, so the percentage is measured against a budget you
+# set in tailer.toml. Tune session_budget / week_budget to match your plan.
+SESSION_SECS = 5 * 3600
+WEEK_SECS    = 7 * 86400
+DEFAULT_SESSION_BUDGET = 200_000_000
+DEFAULT_WEEK_BUDGET    = 2_000_000_000
 
 try:
     import tomllib   # Python 3.11+
@@ -86,6 +96,11 @@ def load_cfg() -> dict:
             'device_url    = "http://claudemon.local"\n'
             'shared_secret = "REPLACE-WITH-VALUE-FROM-DEVICE-PORTAL"\n'
             'interval      = 10\n'
+            '\n'
+            '# Session (5h) / week (7d) gauges are a local proxy for /usage.\n'
+            '# Tune these token budgets so the percentages match your plan limits.\n'
+            'session_budget = 200000000\n'
+            'week_budget    = 2000000000\n'
             '\n'
             '# [groups]\n'
             '# work = ["/Users/me/work/proj-a"]\n'
@@ -212,11 +227,116 @@ def push(cfg: dict, deltas: dict) -> bool:
         return False
 
 
+def _parse_ts(s: str):
+    """ISO-8601 (e.g. 2026-05-10T16:33:37.899Z) -> epoch seconds, or None."""
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+class UsageWindow:
+    """Rolling record of (epoch, tokens) over the last 7 days, read incrementally
+    from the same jsonl logs. Its own byte offsets keep it from double-counting
+    (independent of the delta scanner's offsets)."""
+
+    def __init__(self):
+        self.events: list[tuple[float, int]] = []
+        self.offsets: dict[str, int] = {}
+
+    def refresh(self) -> None:
+        if not LOG_ROOT.exists():
+            return
+        cutoff = time.time() - WEEK_SECS
+        for jsonl in LOG_ROOT.rglob("*.jsonl"):
+            key = str(jsonl)
+            try:
+                st = jsonl.stat()
+            except OSError:
+                continue
+            # Files untouched for >7d and never seen have nothing in-window.
+            if st.st_mtime < cutoff and key not in self.offsets:
+                self.offsets[key] = st.st_size
+                continue
+            off = self.offsets.get(key, 0)
+            if off > st.st_size:
+                off = 0
+            if off == st.st_size:
+                continue
+            try:
+                with jsonl.open("rb") as f:
+                    f.seek(off)
+                    buf = f.read()
+            except OSError:
+                continue
+            consumed = 0
+            for raw in buf.splitlines(keepends=True):
+                if not raw.endswith(b"\n"):
+                    break
+                consumed += len(raw)
+                try:
+                    o = json.loads(raw)
+                except Exception:
+                    continue
+                if o.get("type") != "assistant":
+                    continue
+                u = (o.get("message") or {}).get("usage") or {}
+                if not u:
+                    continue
+                ep = _parse_ts(o.get("timestamp"))
+                if ep is None:
+                    continue
+                tok = (int(u.get("input_tokens") or 0)
+                       + int(u.get("output_tokens") or 0)
+                       + int(u.get("cache_creation_input_tokens") or 0)
+                       + int(u.get("cache_read_input_tokens") or 0))
+                self.events.append((ep, tok))
+            self.offsets[key] = off + consumed
+
+    def sums(self) -> tuple[int, int]:
+        now = time.time()
+        wk_cut, se_cut = now - WEEK_SECS, now - SESSION_SECS
+        self.events = [e for e in self.events if e[0] >= wk_cut]
+        session = sum(k for t, k in self.events if t >= se_cut)
+        week = sum(k for t, k in self.events)
+        return session, week
+
+
+def push_usage(cfg: dict, uw: UsageWindow) -> bool:
+    uw.refresh()
+    session, week = uw.sums()
+    sb = int(cfg.get("session_budget", DEFAULT_SESSION_BUDGET) or 0)
+    wb = int(cfg.get("week_budget", DEFAULT_WEEK_BUDGET) or 0)
+    payload = {
+        "session_tokens": session, "week_tokens": week,
+        "session_budget": sb, "week_budget": wb,
+        "session_pct": int(session * 100 / sb) if sb > 0 else 0,
+        "week_pct": int(week * 100 / wb) if wb > 0 else 0,
+    }
+    body = json.dumps(payload).encode()
+    url = cfg["device_url"].rstrip("/") + "/usage"
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + cfg.get("shared_secret", "")},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            resp.read()
+            return True
+    except Exception as e:
+        print(f"usage push failed: {e}", file=sys.stderr)
+        return False
+
+
 def main() -> None:
     cfg = load_cfg()
     interval = int(cfg.get("interval", 10))
     groups = cfg.get("groups", {})
     state = load_state()
+    usage = UsageWindow()
 
     print(f"claudemon-tailer → {cfg['device_url']}  (every {interval}s)")
     # Prime: on first run, mark all existing bytes as already-seen so we
@@ -235,6 +355,7 @@ def main() -> None:
             deltas = scan(state, groups)
             if push(cfg, deltas):
                 save_state(state)
+            push_usage(cfg, usage)   # session/week gauges (absolute, windowed)
         except KeyboardInterrupt:
             return
         except Exception as e:

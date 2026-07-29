@@ -33,6 +33,23 @@ struct Env {
     uint32_t    history_bucket_start_ms;
 };
 
+// Session (5h) / week (7d) usage snapshot, computed host-side by the tailer and
+// pushed to /usage. The device only displays it. Percentages are of a budget the
+// host sets (a local proxy for /usage, not the live server meter).
+struct Usage {
+    bool     valid;
+    uint32_t session_pct;      // 0..100+ (can exceed if over budget)
+    uint32_t week_pct;
+    uint64_t session_tokens;
+    uint64_t week_tokens;
+    uint64_t session_budget;
+    uint64_t week_budget;
+    uint32_t updated_ms;       // millis() when last set; 0 = never
+};
+
+void set_usage(const Usage& u);
+Usage get_usage();
+
 void init();
 
 // Called from HTTP thread. Looks up or creates the env, adds the sample,

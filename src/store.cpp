@@ -7,6 +7,7 @@
 namespace store {
 
 static Env             s_envs[MAX_ENVS];
+static Usage           s_usage = {};
 static SemaphoreHandle_t s_mu = nullptr;
 
 static void lock()   { xSemaphoreTake(s_mu, portMAX_DELAY); }
@@ -109,6 +110,21 @@ uint64_t grand_total_tokens() {
     }
     unlock();
     return t;
+}
+
+void set_usage(const Usage& u) {
+    lock();
+    s_usage = u;
+    s_usage.valid = true;
+    s_usage.updated_ms = millis();
+    unlock();
+}
+
+Usage get_usage() {
+    lock();
+    Usage u = s_usage;
+    unlock();
+    return u;
 }
 
 int active_env_count() {

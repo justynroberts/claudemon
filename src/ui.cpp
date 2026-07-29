@@ -80,8 +80,8 @@ static uint32_t  s_agg_hist[GRAPH_BARS];
 static int       s_agg_head         = GRAPH_BARS - 1;
 static uint32_t  s_agg_bucket_start = 0;
 static uint64_t  s_last_grand       = 0;
-static constexpr int GRAPH_BASE_Y = 102;   // baseline within graph card
-static constexpr int GRAPH_MAX_H  = 60;
+static constexpr int GRAPH_BASE_Y = 88;    // baseline within graph card
+static constexpr int GRAPH_MAX_H  = 52;
 static constexpr int GRAPH_CARD_W = 456;
 static constexpr int GRAPH_MARGIN = 14;    // inset so bars clear the rounded corners
 static constexpr int GRAPH_BAR_W  = 6;
@@ -90,8 +90,16 @@ static inline int graph_bar_x(int i) {
     return GRAPH_MARGIN + i * (GRAPH_CARD_W - 2 * GRAPH_MARGIN - GRAPH_BAR_W) / (GRAPH_BARS - 1);
 }
 
+// session / week usage gauges ----------------------------------------------
+static lv_obj_t* s_gauge_s_fill = nullptr;   // session fill bar
+static lv_obj_t* s_gauge_w_fill = nullptr;   // week fill bar
+static lv_obj_t* s_gauge_s_val  = nullptr;   // "63% · 27.8M"
+static lv_obj_t* s_gauge_w_val  = nullptr;
+static constexpr int GAUGE_TRACK_X = 12;
+static constexpr int GAUGE_TRACK_W = 432;    // full inner width of the limits card
+
 // ranked rows with per-env sparklines --------------------------------------
-static constexpr int N_ROWS    = 4;
+static constexpr int N_ROWS    = 3;
 static constexpr int SPARK_BARS = 22;
 struct Row {
     lv_obj_t* rank;
@@ -103,7 +111,7 @@ struct Row {
     char      last_tok[24];
 };
 static Row s_rows[N_ROWS];
-static constexpr int ROW_Y0 = 266, ROW_H = 52;
+static constexpr int ROW_Y0 = 304, ROW_H = 52;
 static constexpr int SPARK_X0 = 40, SPARK_PITCH = 18, SPARK_W = 13;
 static constexpr int SPARK_MAX_H = 14;
 static constexpr int SPARK_TOP   = 28;   // sparkline offset within a row (leaves space below)
@@ -181,6 +189,9 @@ static void build_status_bar(lv_obj_t* parent) {
     lv_obj_t* logo = lv_image_create(bar);
     lv_image_set_src(logo, &claude_logo);
     lv_obj_set_pos(logo, 12, 6);
+    // Recolor the coral wordmark to white (keeps its alpha, tints opaque pixels).
+    lv_obj_set_style_image_recolor(logo, lv_color_white(), 0);
+    lv_obj_set_style_image_recolor_opa(logo, LV_OPA_COVER, 0);
 
     s_status_dot = lv_obj_create(bar);
     lv_obj_set_size(s_status_dot, 8, 8);
@@ -195,25 +206,43 @@ static void build_status_bar(lv_obj_t* parent) {
 }
 
 static void build_hero(lv_obj_t* parent) {
-    lv_obj_t* card = mk_card(parent, 12, 52, 456, 92);
-    mk_label(card, "TOTAL TOKENS", &hud_12, theme::text_mute(), 14, 8);
-    // Number sits with clear space above the card's lower edge so it never
-    // crowds the graph card below it.
-    s_hero_total = mk_label(card, "0", &hud_48, theme::accent(), 13, 26);
+    lv_obj_t* card = mk_card(parent, 12, 52, 456, 86);
+    mk_label(card, "TOTAL TOKENS", &hud_12, theme::text_mute(), 14, 7);
+    s_hero_total = mk_label(card, "0", &hud_48, theme::accent(), 13, 22);
 
     // Live rate (per-min) and projected per-day, stacked on the right.
-    s_hero_rate = mk_label(card, "", &hud_18, theme::ok(), 0, 30);
-    lv_obj_align(s_hero_rate, LV_ALIGN_TOP_RIGHT, -14, 30);
-    s_hero_day = mk_label(card, "", &hud_14, theme::text_mute(), 0, 56);
-    lv_obj_align(s_hero_day, LV_ALIGN_TOP_RIGHT, -14, 58);
+    s_hero_rate = mk_label(card, "", &hud_18, theme::ok(), 0, 26);
+    lv_obj_align(s_hero_rate, LV_ALIGN_TOP_RIGHT, -14, 26);
+    s_hero_day = mk_label(card, "", &hud_14, theme::text_mute(), 0, 52);
+    lv_obj_align(s_hero_day, LV_ALIGN_TOP_RIGHT, -14, 54);
+}
+
+// Two slim gauges: SESSION (5h) and WEEK (7d), each a dim track + a coral/amber/
+// red fill sized to the percentage the host reports. A local proxy for /usage.
+static void build_limits(lv_obj_t* parent) {
+    lv_obj_t* card = mk_card(parent, 12, 142, 456, 54);
+
+    auto gauge = [&](int y, const char* name,
+                     lv_obj_t** fill_out, lv_obj_t** val_out) {
+        mk_label(card, name, &hud_12, theme::text_mute(), 12, y);
+        lv_obj_t* v = mk_label(card, "--", &hud_12, theme::text(), 0, y);
+        lv_obj_align(v, LV_ALIGN_TOP_RIGHT, -12, y);
+        *val_out = v;
+        // track
+        mk_bar(card, GAUGE_TRACK_X, y + 15, GAUGE_TRACK_W, 5, theme::bg());
+        // fill (starts at 1px; refresh_usage sizes + colors it)
+        *fill_out = mk_bar(card, GAUGE_TRACK_X, y + 15, 1, 5, theme::accent());
+    };
+    gauge(6,  "SESSION  5h", &s_gauge_s_fill, &s_gauge_s_val);
+    gauge(29, "WEEK  7d",    &s_gauge_w_fill, &s_gauge_w_val);
 }
 
 static void build_graph(lv_obj_t* parent) {
-    lv_obj_t* card = mk_card(parent, 12, 148, GRAPH_CARD_W, 110);
+    lv_obj_t* card = mk_card(parent, 12, 200, GRAPH_CARD_W, 98);
     // Icon in its own larger label so the glyph isn't clipped by the small text line.
-    mk_label(card, ICON_CHART, &hud_18, theme::text_mute(), 14, 13);
-    mk_label(card, "ACTIVITY", &hud_12, theme::text_mute(), 44, 19);
-    mk_label(card, "live - tokens / 3s", &hud_12, theme::accent_dim(), 326, 19);
+    mk_label(card, ICON_CHART, &hud_18, theme::text_mute(), 14, 11);
+    mk_label(card, "ACTIVITY", &hud_12, theme::text_mute(), 44, 17);
+    mk_label(card, "live - tokens / 3s", &hud_12, theme::accent_dim(), 326, 17);
     for (int i = 0; i < GRAPH_BARS; i++) {
         s_bars[i] = mk_bar(card, graph_bar_x(i), GRAPH_BASE_Y - 2, GRAPH_BAR_W, 2, theme::accent_dim());
         s_bar_last_h[i] = 2;
@@ -268,48 +297,79 @@ static void build_dashboard() {
 
     build_status_bar(s_dash);
     build_hero(s_dash);
+    build_limits(s_dash);
     build_graph(s_dash);
     build_rows(s_dash);
 }
 
-// Reset-warning overlay (lives on the top layer, above whichever screen is up).
-static lv_obj_t* s_reset_overlay = nullptr;
-static lv_obj_t* s_reset_lbl     = nullptr;
+// Reset-confirm dialog (top layer, above whichever screen is up). A long-press
+// only SHOWS this; the wipe needs an explicit CONFIRM tap. Fixed geometry so the
+// touch handler can hit-test the buttons in absolute screen coords.
+static lv_obj_t* s_reset_dialog = nullptr;
+static constexpr int RD_X = 40,  RD_Y = 150, RD_W = 400, RD_H = 180;
+// Button rects in absolute screen coords (box origin + button offset).
+static constexpr int BTN_Y1 = RD_Y + 116, BTN_Y2 = RD_Y + 116 + 48;  // 266..314
+static constexpr int CANCEL_X1 = RD_X + 24,  CANCEL_X2 = RD_X + 24 + 160;   // 64..224
+static constexpr int WIPE_X1   = RD_X + 216, WIPE_X2   = RD_X + 216 + 160;   // 256..416
 
-static void build_reset_overlay() {
-    s_reset_overlay = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(s_reset_overlay, 380, 110);
-    lv_obj_center(s_reset_overlay);
-    lv_obj_set_style_bg_color(s_reset_overlay, lv_color_hex(0x2A0F0A), 0);
-    lv_obj_set_style_bg_opa(s_reset_overlay, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(s_reset_overlay, theme::err(), 0);
-    lv_obj_set_style_border_width(s_reset_overlay, 2, 0);
-    lv_obj_set_style_radius(s_reset_overlay, 14, 0);
-    lv_obj_clear_flag(s_reset_overlay, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_reset_overlay, LV_OBJ_FLAG_HIDDEN);
+static void build_reset_dialog() {
+    s_reset_dialog = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(s_reset_dialog, RD_W, RD_H);
+    lv_obj_set_pos(s_reset_dialog, RD_X, RD_Y);
+    lv_obj_set_style_bg_color(s_reset_dialog, lv_color_hex(0x1F1512), 0);
+    lv_obj_set_style_bg_opa(s_reset_dialog, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(s_reset_dialog, theme::err(), 0);
+    lv_obj_set_style_border_width(s_reset_dialog, 2, 0);
+    lv_obj_set_style_radius(s_reset_dialog, 16, 0);
+    lv_obj_set_style_pad_all(s_reset_dialog, 0, 0);
+    lv_obj_clear_flag(s_reset_dialog, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_reset_dialog, LV_OBJ_FLAG_HIDDEN);
 
-    s_reset_lbl = lv_label_create(s_reset_overlay);
-    lv_obj_set_style_text_font(s_reset_lbl, &hud_22, 0);
-    lv_obj_set_style_text_color(s_reset_lbl, theme::err(), 0);
-    lv_obj_set_style_text_align(s_reset_lbl, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_reset_lbl, "");
-    lv_obj_center(s_reset_lbl);
+    lv_obj_t* title = mk_label(s_reset_dialog, ICON_BOLT "  RESET WIFI?", &hud_22, theme::err(), 0, 20);
+    lv_obj_set_width(title, RD_W); lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_t* sub = mk_label(s_reset_dialog, "wipes your saved network", &hud_14, theme::text_mute(), 0, 58);
+    lv_obj_set_width(sub, RD_W); lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
+
+    auto btn = [&](int bx, lv_color_t bg, lv_color_t fg, const char* txt) {
+        lv_obj_t* b = lv_obj_create(s_reset_dialog);
+        lv_obj_set_size(b, 160, 48);
+        lv_obj_set_pos(b, bx, 116);
+        lv_obj_set_style_bg_color(b, bg, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(b, 0, 0);
+        lv_obj_set_style_radius(b, 10, 0);
+        lv_obj_clear_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t* l = lv_label_create(b);
+        lv_label_set_text(l, txt);
+        lv_obj_set_style_text_font(l, &hud_18, 0);
+        lv_obj_set_style_text_color(l, fg, 0);
+        lv_obj_center(l);
+    };
+    btn(24,  theme::bg_edge(), theme::text(), "CANCEL");
+    btn(216, theme::err(),     lv_color_white(), "WIPE");
 }
 
-void reset_hint(int secs) {
-    static int last = -2;
-    if (secs == last || !s_reset_overlay) return;
-    last = secs;
-    if (secs < 0) {
-        lv_obj_add_flag(s_reset_overlay, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        char b[64];
-        snprintf(b, sizeof(b), ICON_BOLT "  WIPING WIFI IN %d\nrelease to cancel", secs);
-        lv_label_set_text(s_reset_lbl, b);
-        lv_obj_center(s_reset_lbl);
-        lv_obj_clear_flag(s_reset_overlay, LV_OBJ_FLAG_HIDDEN);
-    }
+void show_reset_dialog() {
+    if (!s_reset_dialog) return;
+    lv_obj_clear_flag(s_reset_dialog, LV_OBJ_FLAG_HIDDEN);
     lv_refr_now(NULL);
+}
+void hide_reset_dialog() {
+    if (!s_reset_dialog) return;
+    lv_obj_add_flag(s_reset_dialog, LV_OBJ_FLAG_HIDDEN);
+    lv_refr_now(NULL);
+    lv_refr_now(NULL);   // repaint the screen underneath (RGB-DMA quirk)
+}
+bool reset_dialog_visible() {
+    return s_reset_dialog && !lv_obj_has_flag(s_reset_dialog, LV_OBJ_FLAG_HIDDEN);
+}
+ResetTap reset_dialog_tap(int x, int y) {
+    if (!reset_dialog_visible()) return ResetTap::None;
+    if (y >= BTN_Y1 && y <= BTN_Y2) {
+        if (x >= CANCEL_X1 && x <= CANCEL_X2) return ResetTap::Cancel;
+        if (x >= WIPE_X1   && x <= WIPE_X2)   return ResetTap::Confirm;
+    }
+    return ResetTap::None;
 }
 
 // AP splash widgets
@@ -364,7 +424,7 @@ static void build_ap_screen() {
 void begin() {
     build_ap_screen();
     build_dashboard();
-    build_reset_overlay();
+    build_reset_dialog();
     s_agg_bucket_start = millis();
     show_ap_splash();
 }
@@ -613,6 +673,51 @@ static bool refresh_rows() {
     return changed;
 }
 
+static lv_color_t usage_color(uint32_t pct) {
+    if (pct >= 90) return theme::err();
+    if (pct >= 70) return theme::warn();
+    return theme::ok();
+}
+
+static bool refresh_usage() {
+    static char    last_s[24] = "", last_w[24] = "";
+    static int32_t last_spct = -1, last_wpct = -1;
+    store::Usage u = store::get_usage();
+    bool changed = false;
+
+    if (!u.valid) {
+        changed |= set_text_if_diff(s_gauge_s_val, "no data yet", last_s, sizeof(last_s));
+        if (changed) lv_obj_align(s_gauge_s_val, LV_ALIGN_TOP_RIGHT, -12, 6);
+        return changed;
+    }
+
+    char stk[16], wtk[16], sb[24], wb[24];
+    fmt_tokens(u.session_tokens, stk, sizeof(stk));
+    fmt_tokens(u.week_tokens, wtk, sizeof(wtk));
+    snprintf(sb, sizeof(sb), "%u%%  %s", (unsigned)u.session_pct, stk);
+    snprintf(wb, sizeof(wb), "%u%%  %s", (unsigned)u.week_pct, wtk);
+    if (set_text_if_diff(s_gauge_s_val, sb, last_s, sizeof(last_s))) {
+        lv_obj_align(s_gauge_s_val, LV_ALIGN_TOP_RIGHT, -12, 6); changed = true;
+    }
+    if (set_text_if_diff(s_gauge_w_val, wb, last_w, sizeof(last_w))) {
+        lv_obj_align(s_gauge_w_val, LV_ALIGN_TOP_RIGHT, -12, 29); changed = true;
+    }
+
+    auto set_fill = [](lv_obj_t* fill, uint32_t pct, int32_t& last) {
+        if ((int32_t)pct == last) return false;
+        last = pct;
+        uint32_t c = pct > 100 ? 100 : pct;
+        int32_t w = (int32_t)((uint64_t)GAUGE_TRACK_W * c / 100);
+        if (w < 1) w = 1;
+        lv_obj_set_width(fill, w);
+        lv_obj_set_style_bg_color(fill, usage_color(pct), 0);
+        return true;
+    };
+    if (set_fill(s_gauge_s_fill, u.session_pct, last_spct)) changed = true;
+    if (set_fill(s_gauge_w_fill, u.week_pct,   last_wpct)) changed = true;
+    return changed;
+}
+
 void tick() {
     static uint32_t last = 0;
     if (millis() - last < 500) return;
@@ -631,6 +736,7 @@ void tick() {
     bool changed = false;
     changed |= refresh_status_bar();
     changed |= refresh_hero(grand);
+    changed |= refresh_usage();
     changed |= refresh_graph();
     changed |= refresh_rows();
 

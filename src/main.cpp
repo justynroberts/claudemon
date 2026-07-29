@@ -13,11 +13,13 @@
 
 static uint32_t s_long_press_started = 0;
 static uint32_t s_last_press_ms      = 0;
+static uint32_t s_reset_dialog_ms    = 0;
 
-// Factory reset = sustained screen hold. Armed at 3 s (overlay countdown shows),
-// fires at 8 s. The countdown means an accidental poke can't silently wipe WiFi.
-static constexpr uint32_t RESET_ARM_MS  = 3000;
-static constexpr uint32_t RESET_HOLD_MS = 8000;
+// A sustained ~3 s hold ARMS the reset by showing a confirm dialog; the WiFi
+// wipe only happens on an explicit CONFIRM tap. So an accidental hold can't
+// reset the device. The dialog auto-dismisses after RESET_DIALOG_TIMEOUT.
+static constexpr uint32_t RESET_ARM_MS        = 3000;
+static constexpr uint32_t RESET_DIALOG_TIMEOUT = 15000;
 
 void setup() {
     Serial.begin(115200);
@@ -58,40 +60,48 @@ void loop() {
     lv_timer_handler();
     touch::poll();
 
-    // Click dispatch + long-press detection (3 s = wipe config and reboot).
-    // GT911 occasionally sends npts=0 during a hold, so we tolerate a 300 ms
-    // gap before considering the finger truly lifted.
+    // Touch handling. GT911 occasionally sends npts=0 during a hold, so we
+    // tolerate a 300 ms gap before considering the finger truly lifted.
     static bool was_pressed = false;
     static uint32_t last_click_ms = 0;
     bool pressed = touch::pressed();
     uint32_t now = millis();
 
     if (pressed) s_last_press_ms = now;
-
-    // "Effectively held" = finger down OR was down within 300 ms.
     bool held = pressed || (now - s_last_press_ms < 300);
+    bool tap  = pressed && !was_pressed && now - last_click_ms > 250;
 
-    if (held && s_long_press_started == 0) s_long_press_started = now;
-    if (!held) {
-        if (s_long_press_started) ui::reset_hint(-1);   // released — cancel
+    if (ui::reset_dialog_visible()) {
+        // While the confirm dialog is up, taps go to its buttons only.
         s_long_press_started = 0;
-    }
-
-    if (s_long_press_started) {
-        uint32_t held_ms = now - s_long_press_started;
-        if (held_ms >= RESET_HOLD_MS) {
-            ui::reset_hint(-1);
+        if (tap) {
+            switch (ui::reset_dialog_tap(touch::x(), touch::y())) {
+                case ui::ResetTap::Confirm:
+                    ui::hide_reset_dialog();
+                    net::enter_config_mode();   // wipes WiFi + reboots
+                    break;
+                case ui::ResetTap::Cancel:
+                    ui::hide_reset_dialog();
+                    break;
+                case ui::ResetTap::None:
+                    break;                       // tapped outside buttons — keep open
+            }
+            last_click_ms = now;
+        }
+        if (now - s_reset_dialog_ms > RESET_DIALOG_TIMEOUT) ui::hide_reset_dialog();
+    } else {
+        // Long hold arms the reset dialog (no wipe yet).
+        if (held && s_long_press_started == 0) s_long_press_started = now;
+        if (!held) s_long_press_started = 0;
+        if (s_long_press_started && now - s_long_press_started > RESET_ARM_MS) {
             s_long_press_started = 0;
             s_last_press_ms = 0;
-            net::enter_config_mode();
-        } else if (held_ms > RESET_ARM_MS) {
-            ui::reset_hint((int)((RESET_HOLD_MS - held_ms + 999) / 1000));
+            ui::show_reset_dialog();
+            s_reset_dialog_ms = now;
+        } else if (tap) {
+            touch::dispatch_click(touch::x(), touch::y());
+            last_click_ms = now;
         }
-    }
-
-    if (pressed && !was_pressed && now - last_click_ms > 250) {
-        touch::dispatch_click(touch::x(), touch::y());
-        last_click_ms = now;
     }
     was_pressed = pressed;
 
