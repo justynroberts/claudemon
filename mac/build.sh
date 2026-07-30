@@ -18,6 +18,9 @@ swiftc -O -parse-as-library main.swift \
 # Bundle the tailer so the app is self-contained; it's run via /usr/bin/python3.
 cp ../host/claudemon-tailer.py "$APP/Contents/Resources/claudemon-tailer.py"
 
+# App icon (regenerate with icon.html -> icon_1024.png -> iconutil if changed).
+[ -f claudemon.icns ] && cp claudemon.icns "$APP/Contents/Resources/claudemon.icns"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,6 +32,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>claudemon</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>claudemon reaches your device on your local network to show its status.</string>

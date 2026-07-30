@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1024px; height:1024px; background:transparent; }
+  .icon {
+    width:1024px; height:1024px; border-radius:230px; position:relative; overflow:hidden;
+    background:
+      radial-gradient(circle at 50% 38%, #33261d 0%, #1c1815 55%, #120f0d 100%);
+  }
+  /* faint activity-bar texture along the bottom, on-brand */
+  .bars { position:absolute; left:150px; right:150px; bottom:150px; height:150px;
+          display:flex; align-items:flex-end; gap:20px; opacity:.16; }
+  .bars i { flex:1; background:#CC785C; border-radius:6px; }
+  .mark {
+    position:absolute; top:230px; left:282px; width:460px; height:400px;
+    border:48px solid #CC785C; border-radius:96px;
+    box-shadow: 0 0 70px rgba(204,120,92,.45), inset 0 0 40px rgba(204,120,92,.10);
+    background:
+      radial-gradient(circle at 50% 45%, rgba(204,120,92,.10), transparent 60%);
+  }
+  .mark::after {
+    content:""; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:150px; height:150px; border-radius:50%;
+    background:linear-gradient(150deg,#E08A66,#CC785C);
+    box-shadow:0 0 40px rgba(204,120,92,.6);
+  }
+</style></head><body>
+  <div class="icon">
+    <div class="bars"><i style="height:38%"></i><i style="height:64%"></i><i style="height:88%"></i><i style="height:54%"></i><i style="height:72%"></i><i style="height:44%"></i><i style="height:80%"></i><i style="height:60%"></i></div>
+    <div class="mark"></div>
+  </div>
+</body></html>

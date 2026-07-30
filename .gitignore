@@ -12,3 +12,4 @@ __pycache__/
 tailer-state.json
 dist/
 mac/claudemon.app/
+mac/icon_1024.png
