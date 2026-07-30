@@ -11,3 +11,4 @@ __pycache__/
 *.pyc
 tailer-state.json
 dist/
+mac/claudemon.app/
