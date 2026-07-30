@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
     @Published var deviceEnvs    = 0
     @Published var deviceIP      = ""
     @Published var lastMessage   = ""
+    @Published var backfilling   = false
 
     private var timer: Timer?
 
@@ -165,6 +166,34 @@ final class AppModel: ObservableObject {
     }
 
     func restart() { stop(); start() }
+
+    // ── one-shot backfill of historical usage ──
+    func backfill() {
+        let script = tailerScriptPath()
+        guard !script.isEmpty else { lastMessage = "Bundled tailer missing."; return }
+        saveConfigQuiet()
+        backfilling = true
+        lastMessage = "Backfilling history…"
+        Task { [weak self] in
+            let ok = await AppModel.runBackfill(script: script)
+            guard let self else { return }
+            self.backfilling = false
+            self.lastMessage = ok ? "Backfill complete." : "Backfill failed — see Logs."
+            await self.refreshStatus()
+        }
+    }
+
+    nonisolated static func runBackfill(script: String) async -> Bool {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global().async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+                p.arguments = [script, "--backfill"]
+                do { try p.run(); p.waitUntilExit(); cont.resume(returning: p.terminationStatus == 0) }
+                catch { cont.resume(returning: false) }
+            }
+        }
+    }
 
     private func saveConfigQuiet() {
         let wasRunning = running; running = false
@@ -302,6 +331,15 @@ struct ContentView: View {
                     }
                     .buttonStyle(CMButton(filled: true, danger: m.running))
                 }
+
+                Button(action: { m.backfill() }) {
+                    HStack(spacing: 6) {
+                        if m.backfilling { ProgressView().controlSize(.small).scaleEffect(0.7) }
+                        Text(m.backfilling ? "Backfilling…" : "Backfill history now")
+                    }.frame(maxWidth: .infinity)
+                }
+                .buttonStyle(CMButton(filled: false))
+                .disabled(m.backfilling)
 
                 HStack {
                     if !m.deviceIP.isEmpty && m.deviceOnline {

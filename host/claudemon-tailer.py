@@ -369,5 +369,29 @@ def main() -> None:
         time.sleep(interval)
 
 
+def backfill_once() -> bool:
+    """One-shot: push ALL historical per-project usage + the session/week/month
+    gauges, then exit. Used by the menu bar app's 'Backfill history' button so a
+    freshly-booted device (RAM store) fills instantly instead of only tracking
+    forward. Uses a throwaway state so it never touches the live tailer's offsets.
+    """
+    cfg = load_cfg()
+    groups = cfg.get("groups", {})
+    uw = UsageWindow()
+    for attempt in range(4):
+        try:
+            deltas = scan({}, groups)          # empty state -> full history
+            if push(cfg, deltas) and push_usage(cfg, uw):
+                print("backfill: ok")
+                return True
+        except Exception as e:
+            print(f"backfill error: {e}", file=sys.stderr)
+        time.sleep(2)
+    print("backfill: failed", file=sys.stderr)
+    return False
+
+
 if __name__ == "__main__":
+    if "--backfill" in sys.argv:
+        sys.exit(0 if backfill_once() else 1)
     main()
